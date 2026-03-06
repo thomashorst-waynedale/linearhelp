@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friendly Equation Solver</title>
+    <script src="https://unpkg.com/mathlive"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            background-image: radial-gradient(#e9ecef 1px, transparent 1px);
+            background-size: 20px 20px;
+            display: flex; flex-direction: column; align-items: center;
+            margin: 0; padding: 40px 20px;
+        }
+
+        .container {
+            background: white; padding: 40px; border-radius: 24px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.06); width: 100%; max-width: 600px;
+            transition: all 0.3s ease;
+        }
+
+        h2 { 
+            margin-top: 0; color: #ff6b6b; text-align: center; 
+            font-size: 28px; margin-bottom: 10px;
+        }
+        
+        .instructions { 
+            color: #7f8c8d; text-align: center; margin-bottom: 25px; 
+            line-height: 1.5; font-size: 16px;
+        }
+
+        math-field {
+            font-size: 22px; padding: 15px; border: 3px solid #f1f3f5;
+            border-radius: 16px; outline: none; transition: all 0.2s; 
+            background: #ffffff; width: 100%; box-sizing: border-box;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+        math-field:focus-within { border-color: #4ecdc4; box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.2); }
+
+        .setup-area { margin-bottom: 20px; }
+
+        .input-area {
+            display: none; flex-direction: column; gap: 15px;
+            background: #f1fdfc; padding: 20px; border-radius: 16px;
+            border: 2px dashed #4ecdc4; margin-top: 20px;
+        }
+
+        .btn-container { display: flex; gap: 10px; width: 100%; }
+
+        .btn {
+            color: white; border: none; padding: 14px 24px;
+            border-radius: 50px; cursor: pointer; font-size: 16px; font-weight: bold; 
+            transition: all 0.2s ease;
+        }
+        
+        .btn-start { background: #ff6b6b; width: 100%; box-shadow: 0 4px 10px rgba(255, 107, 107, 0.3); }
+        .btn-start:hover { background: #ff5252; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(255, 107, 107, 0.4); }
+        
+        .btn-step { background: #4ecdc4; flex: 1; box-shadow: 0 4px 10px rgba(78, 205, 196, 0.3); }
+        .btn-step:hover { background: #45b7af; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(78, 205, 196, 0.4); }
+
+        .btn-undo { 
+            background: #ced4da; color: #495057; flex: 0 0 30%; 
+            box-shadow: 0 4px 10px rgba(206, 212, 218, 0.4);
+        }
+        .btn-undo:hover { 
+            background: #adb5bd; transform: translateY(-2px); 
+            box-shadow: 0 6px 15px rgba(173, 181, 189, 0.5); 
+        }
+
+        #message { 
+            margin-top: 20px; font-weight: bold; font-size: 16px; 
+            min-height: 24px; text-align: center; padding: 12px; border-radius: 12px;
+        }
+
+        ul { list-style-type: none; padding: 0; margin-top: 20px; width: 100%; }
+        .step-item { 
+            display: flex; align-items: center; margin-bottom: 12px; 
+            background: #f8f9fa; border-radius: 16px; padding: 8px 15px;
+        }
+        .step-number { font-weight: bold; color: #ced4da; margin-right: 15px; font-size: 20px; }
+        .step-item math-field { border: none; background: transparent; padding: 5px; box-shadow: none; pointer-events: none; }
+
+        .victory-mode { background-color: #f1c40f; }
+        .victory-text { font-size: 22px; color: #d35400; background: #fef9e7; border: 2px solid #f1c40f; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <h2>✨ Equation Explorer</h2>
+    
+    <div class="instructions">
+        Type an equation below to start. We'll check your work step-by-step!
+    </div>
+
+    <div class="setup-area" id="setupArea">
+        <math-field id="setupInput" style="margin-bottom: 15px;"></math-field>
+        <button class="btn btn-start" onclick="startNewProblem()">Start Solving</button>
+    </div>
+
+    <ul id="stepList"></ul>
+
+    <div class="input-area" id="inputArea">
+        <math-field id="stepInput" onkeydown="handleEnter(event)"></math-field>
+        <div class="btn-container">
+            <button class="btn btn-step" onclick="submitStep()">Check My Step</button>
+            <button class="btn btn-undo" onclick="undoStep()">Undo</button>
+        </div>
+    </div>
+
+    <div id="message"></div>
+</div>
+
+<script>
+    let steps = [];
+    let initialRoot = null;
+    let isSolved = false;
+
+    function handleEnter(e) { if (e.key === 'Enter') { e.preventDefault(); submitStep(); } }
+
+    function latexToMath(latex) {
+        let str = latex.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
+        str = str.replace(/\\cdot/g, '').replace(/\\times/g, ''); 
+        str = str.replace(/\\div/g, '/');
+        str = str.replace(/\s+/g, '');
+        
+        // UPGRADED: Now catches \frac, \dfrac, and \tfrac
+        str = str.replace(/\\(d|t)?frac{([^{}]+)}{([^{}]+)}/g, function(match, prefix, num, den) {
+            if (!/[+\-]/.test(num) && !/[+\-]/.test(den)) return num + '/' + den;
+            return '(' + num + ')/(' + den + ')';
+        });
+        
+        // Catch fractions without brackets just in case
+        str = str.replace(/\\(d|t)?frac(\d)(\d)/g, '$2/$3');
+
+        str = str.replace(/[{}]/g, ''); 
+        return str.toLowerCase();
+    }
+
+    function startNewProblem() {
+        const rawLatex = document.getElementById('setupInput').value;
+        const asciiEq = latexToMath(rawLatex);
+        const rootInfo = calculateRoot(asciiEq);
+        
+        if (rootInfo.error) { showMessage("Oops! " + rootInfo.error, "error"); return; }
+
+        steps = [{ latex: rawLatex, ascii: asciiEq }]; 
+        initialRoot = rootInfo.val; isSolved = false;
+        
+        document.body.classList.remove('victory-mode');
+        document.getElementById('inputArea').style.display = 'flex';
+        document.getElementById('setupArea').style.display = 'none';
+        document.getElementById('stepInput').value = '';
+        showMessage("Awesome! What's your first step?", "success");
+        renderSteps();
+        document.getElementById('stepInput').focus();
+    }
+
+    function submitStep() {
+        if (isSolved) return;
+        
+        const rawLatex = document.getElementById('stepInput').value;
+        const asciiInput = latexToMath(rawLatex);
+
+        if (asciiInput === "") return;
+        
+        const lastStepAscii = steps[steps.length - 1].ascii;
+        if (rawLatex === steps[steps.length - 1].latex) { 
+            showMessage("That looks exactly like the last step!", "error"); 
+            return; 
+        }
+
+        const newRootInfo = calculateRoot(asciiInput);
+
+        if (newRootInfo.error) { 
+            showMessage("Hmm, check your formatting: " + newRootInfo.error, "error"); 
+            return; 
+        }
+
+        if (Math.abs(newRootInfo.val - initialRoot) > 0.001) {
+            const hint = diagnoseError(lastStepAscii, asciiInput);
+            showMessage(hint, "error");
+            return;
+        }
+
+        steps.push({ latex: rawLatex, ascii: asciiInput });
+        document.getElementById('stepInput').value = '';
+        showMessage("Great move! Keep going.", "success");
+        renderSteps();
+        checkWinCondition(asciiInput);
+    }
+
+    function undoStep() {
+        if (steps.length <= 1) {
+            showMessage("You're already at the very beginning!", "error");
+            return;
+        }
+        steps.pop();
+        isSolved = false;
+        document.body.classList.remove('victory-mode');
+        document.getElementById('inputArea').style.display = 'flex';
+        
+        const resetBtn = document.getElementById('resetBtn');
+        if (resetBtn) resetBtn.remove();
+        
+        document.getElementById('stepInput').value = '';
+        renderSteps();
+        showMessage("Step undone. Let's try that again!", "success");
+        document.getElementById('stepInput').focus();
+    }
+
+    function diagnoseError(oldEq, newEq) {
+        const oldSides = oldEq.split('=');
+        const newSides = newEq.split('=');
+        const oldL = parseSide(oldSides[0]); const oldR = parseSide(oldSides[1]);
+        const newL = parseSide(newSides[0]); const newR = parseSide(newSides[1]);
+
+        if(oldL.error || oldR.error || newL.error || newR.error) return "Wait! That's an illegal math move.";
+
+        const leftChanged = (Math.abs(oldL.x - newL.x) > 0.001 || Math.abs(oldL.c - newL.c) > 0.001);
+        const rightChanged = (Math.abs(oldR.x - newR.x) > 0.001 || Math.abs(oldR.c - newR.c) > 0.001);
+
+        if (leftChanged && !rightChanged) return "Hint: The right side stayed the same, but the left side changed. Check your math on the left!";
+        if (!leftChanged && rightChanged) return "Hint: The left side stayed the same, but the right side changed. Double-check the right side!";
+
+        const deltaLeftC = newL.c - oldL.c; const deltaRightC = newR.c - oldR.c;
+        const deltaLeftX = newL.x - oldL.x; const deltaRightX = newR.x - oldR.x;
+
+        if (Math.abs(deltaLeftC + deltaRightC) < 0.001 && Math.abs(deltaLeftC) > 0) return "Hint: Looks like you added a number to one side, but subtracted it from the other. Keep it balanced!";
+        if (Math.abs(deltaLeftX + deltaRightX) < 0.001 && Math.abs(deltaLeftX) > 0) return "Hint: You added x-terms to one side but subtracted them from the other.";
+
+        if (Math.abs(deltaLeftC - deltaRightC) > 0.001 && Math.abs(deltaLeftX - deltaRightX) < 0.001) return "Hint: You changed the constant numbers differently on each side. Remember the golden rule of algebra!";
+        if (Math.abs(deltaLeftX - deltaRightX) > 0.001 && Math.abs(deltaLeftC - deltaRightC) < 0.001) return "Hint: You changed the x-terms differently on each side. Keep it balanced!";
+
+        return "Hint: That move threw the equation off balance. Check your arithmetic carefully!";
+    }
+
+    function checkWinCondition(eqStr) {
+        const sides = eqStr.split('=');
+        const s1 = sides[0]; const s2 = sides[1];
+        const isLeftX = (s1 === 'x' || s1 === '1x' || s1 === '+x');
+        const isRightX = (s2 === 'x' || s2 === '1x' || s2 === '+x');
+        
+        if (isLeftX || isRightX) {
+            isSolved = true;
+            document.body.classList.add('victory-mode');
+            document.getElementById('inputArea').style.display = 'none';
+            showMessage("🎉 You isolated x! You solved it! 🎉", "victory-text");
+            
+            const resetBtn = document.createElement('button');
+            resetBtn.id = 'resetBtn';
+            resetBtn.className = 'btn btn-start';
+            resetBtn.innerText = 'Solve Another';
+            resetBtn.style.marginTop = '15px';
+            resetBtn.onclick = () => location.reload();
+            document.getElementById('mainContainer').appendChild(resetBtn);
+        }
+    }
+
+    function renderSteps() {
+        const list = document.getElementById('stepList');
+        list.innerHTML = '';
+        steps.forEach((stepObj, index) => {
+            const li = document.createElement('li');
+            li.className = 'step-item';
+            
+            const num = document.createElement('span');
+            num.className = 'step-number';
+            num.innerText = (index + 1);
+            
+            const mf = document.createElement('math-field');
+            mf.value = stepObj.latex;
+            mf.readOnly = true;
+
+            li.appendChild(num); li.appendChild(mf); list.appendChild(li);
+        });
+    }
+
+    function calculateRoot(eqStr) {
+        if (!eqStr.includes('=')) return { error: "Missing an '=' sign." };
+        const sides = eqStr.split('=');
+        if (sides.length !== 2 || sides[0] === '' || sides[1] === '') return { error: "Both sides must have values." };
+
+        const leftParsed = parseSide(sides[0]);
+        const rightParsed = parseSide(sides[1]);
+
+        if (leftParsed.error) return leftParsed;
+        if (rightParsed.error) return rightParsed;
+
+        const totalX = leftParsed.x - rightParsed.x;
+        const totalC = rightParsed.c - leftParsed.c;
+
+        if (totalX === 0) {
+            if (totalC === 0) return { error: "Infinite solutions (0 = 0)." };
+            else return { error: "No solution (0x = non-zero)." };
+        }
+        return { val: totalC / totalX };
+    }
+
+    function parseTerm(t) {
+        let isVar = false;
+        if (t.includes('x')) { isVar = true; t = t.replace('x', ''); }
+        let sign = 1; if (t.startsWith('-')) sign = -1;
+        t = t.substring(1);
+        if (t === '') return { val: sign * 1, isVar: isVar };
+        if (t.startsWith('/')) return { val: sign * (1 / parseFloat(t.substring(1))), isVar: isVar };
+        if (t.includes('/')) {
+            let parts = t.split('/');
+            return { val: sign * (parseFloat(parts[0]) / parseFloat(parts[1])), isVar: isVar };
+        }
+        return { val: sign * parseFloat(t), isVar: isVar };
+    }
+
+    function parseSide(sideStr) {
+        try {
+            let expanded = expandAll(sideStr);
+            if (expanded[0] !== '+' && expanded[0] !== '-') expanded = '+' + expanded;
+            const terms = expanded.match(/[+-][^+-]+/g);
+            if (!terms) return { error: "Could not read terms." };
+
+            let xCoef = 0; let cVal = 0;
+            for (let t of terms) {
+                let pt = parseTerm(t);
+                if (isNaN(pt.val)) return { error: "Invalid number found." };
+                if (pt.isVar) xCoef += pt.val; else cVal += pt.val;
+            }
+            return { x: xCoef, c: cVal };
+        } catch (e) { return { error: "Invalid math format." }; }
+    }
+
+    function expandAll(text) {
+        let prev;
+        do {
+            prev = text;
+            text = text.replace(/\(([-+0-9./]+)\)/g, (m, expr) => {
+                try { return new Function('return ' + expr)(); } catch { return m; }
+            });
+        } while (text !== prev);
+
+        do {
+            prev = text;
+            text = text.replace(/([+-]?)\(([^()]+)\)\/\(?([+-]?\d*\.?\d*)\)?/g, (m, sign, inner, den) => {
+                return (sign || '+') + "1/" + den + "(" + inner + ")";
+            });
+
+            text = text.replace(/([+-]?\d*\.?\d*(?:\/\d+\.?\d*)?)\(([^()]+)\)/g, (match, multStr, innerStr) => {
+                let mult = 1;
+                if (multStr === '-') mult = -1;
+                else if (multStr === '+' || multStr === '') mult = 1;
+                else if (multStr.includes('/')) {
+                    let parts = multStr.split('/');
+                    let sign = multStr.startsWith('-') ? -1 : 1;
+                    let numStr = parts[0].replace('+','').replace('-','');
+                    let num = numStr === '' ? 1 : parseFloat(numStr);
+                    mult = sign * (num / parseFloat(parts[1]));
+                } else mult = parseFloat(multStr);
+
+                let cleanInner = innerStr;
+                if (cleanInner[0] !== '+' && cleanInner[0] !== '-') cleanInner = '+' + cleanInner;
+                const innerTerms = cleanInner.match(/[+-][^+-]+/g);
+                if (!innerTerms) return "";
+
+                let expandedStr = "";
+                for (let t of innerTerms) {
+                    let pt = parseTerm(t); let coef = pt.val * mult;
+                    expandedStr += (coef >= 0 ? '+' : '') + coef + (pt.isVar ? 'x' : '');
+                }
+                return expandedStr;
+            });
+        } while (text !== prev);
+        return text;
+    }
+
+    function showMessage(msg, type) {
+        const msgEl = document.getElementById('message');
+        msgEl.innerText = msg;
+        if (type === 'error') {
+            msgEl.style.backgroundColor = '#ffe3e3'; msgEl.style.color = '#c92a2a';
+        } else if (type === 'success') {
+            msgEl.style.backgroundColor = '#e3fafc'; msgEl.style.color = '#0b7285';
+        } else {
+            msgEl.className = type; 
+        }
+    }
+</script>
+
+</body>
+</html>
