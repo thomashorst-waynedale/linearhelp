@@ -123,19 +123,17 @@
 
     function latexToMath(latex) {
         let str = latex.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
-        str = str.replace(/\\cdot/g, '').replace(/\\times/g, ''); 
+        
+        // UPGRADE 1: Properly convert multiplication dots and crosses to asterisks
+        str = str.replace(/\\cdot/g, '*').replace(/\\times/g, '*'); 
         str = str.replace(/\\div/g, '/');
         str = str.replace(/\s+/g, '');
         
-        // UPGRADED: Now catches \frac, \dfrac, and \tfrac
         str = str.replace(/\\(d|t)?frac{([^{}]+)}{([^{}]+)}/g, function(match, prefix, num, den) {
             if (!/[+\-]/.test(num) && !/[+\-]/.test(den)) return num + '/' + den;
             return '(' + num + ')/(' + den + ')';
         });
-        
-        // Catch fractions without brackets just in case
         str = str.replace(/\\(d|t)?frac(\d)(\d)/g, '$2/$3');
-
         str = str.replace(/[{}]/g, ''); 
         return str.toLowerCase();
     }
@@ -300,18 +298,32 @@
         return { val: totalC / totalX };
     }
 
+    // UPGRADE 2: Taught the parser how to evaluate arithmetic inside terms
     function parseTerm(t) {
         let isVar = false;
-        if (t.includes('x')) { isVar = true; t = t.replace('x', ''); }
-        let sign = 1; if (t.startsWith('-')) sign = -1;
-        t = t.substring(1);
-        if (t === '') return { val: sign * 1, isVar: isVar };
-        if (t.startsWith('/')) return { val: sign * (1 / parseFloat(t.substring(1))), isVar: isVar };
-        if (t.includes('/')) {
-            let parts = t.split('/');
-            return { val: sign * (parseFloat(parts[0]) / parseFloat(parts[1])), isVar: isVar };
+        if (t.includes('x')) { 
+            isVar = true; 
+            t = t.replace('x', ''); 
         }
-        return { val: sign * parseFloat(t), isVar: isVar };
+        
+        if (t === '+' || t === '') return { val: 1, isVar: isVar };
+        if (t === '-') return { val: -1, isVar: isVar };
+        
+        // Clean up hanging operators left over from removing 'x'
+        t = t.replace(/^[-+]\*/, (m) => m[0]); // Changes "-*" to "-"
+        t = t.replace(/\*\*/g, '*');           // Changes "**" to "*"
+        t = t.replace(/\*$/, '');              // Removes "*" at the very end
+        
+        // Handle standalone division (e.g., "x/2" becomes "1/2")
+        if (t.startsWith('/')) t = '1' + t;
+        if (t.startsWith('-/') || t.startsWith('+/')) t = t[0] + '1' + t.substring(1);
+        
+        try {
+            if (!/^[-+*/.0-9]+$/.test(t)) return { val: NaN, isVar: isVar };
+            return { val: new Function('return ' + t)(), isVar: isVar };
+        } catch(e) { 
+            return { val: NaN, isVar: isVar }; 
+        }
     }
 
     function parseSide(sideStr) {
@@ -335,7 +347,7 @@
         let prev;
         do {
             prev = text;
-            text = text.replace(/\(([-+0-9./]+)\)/g, (m, expr) => {
+            text = text.replace(/\(([-+0-9./*]+)\)/g, (m, expr) => {
                 try { return new Function('return ' + expr)(); } catch { return m; }
             });
         } while (text !== prev);
