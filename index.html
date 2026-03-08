@@ -47,28 +47,25 @@
             border: 2px dashed #4ecdc4; margin-top: 20px;
         }
 
-        .btn-container { display: flex; gap: 10px; width: 100%; }
+        .btn-container { display: flex; gap: 8px; width: 100%; }
 
         .btn {
-            color: white; border: none; padding: 14px 24px;
-            border-radius: 50px; cursor: pointer; font-size: 16px; font-weight: bold; 
-            transition: all 0.2s ease;
+            color: white; border: none; padding: 14px 10px;
+            border-radius: 50px; cursor: pointer; font-size: 14px; font-weight: bold; 
+            transition: all 0.2s ease; text-align: center;
         }
         
-        .btn-start { background: #ff6b6b; width: 100%; box-shadow: 0 4px 10px rgba(255, 107, 107, 0.3); }
-        .btn-start:hover { background: #ff5252; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(255, 107, 107, 0.4); }
+        .btn-start { background: #ff6b6b; width: 100%; font-size: 16px; box-shadow: 0 4px 10px rgba(255, 107, 107, 0.3); }
+        .btn-start:hover { background: #ff5252; transform: translateY(-2px); }
         
-        .btn-step { background: #4ecdc4; flex: 1; box-shadow: 0 4px 10px rgba(78, 205, 196, 0.3); }
-        .btn-step:hover { background: #45b7af; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(78, 205, 196, 0.4); }
+        .btn-step { background: #4ecdc4; flex: 2; box-shadow: 0 4px 10px rgba(78, 205, 196, 0.3); }
+        .btn-step:hover { background: #45b7af; transform: translateY(-2px); }
 
-        .btn-undo { 
-            background: #ced4da; color: #495057; flex: 0 0 30%; 
-            box-shadow: 0 4px 10px rgba(206, 212, 218, 0.4);
-        }
-        .btn-undo:hover { 
-            background: #adb5bd; transform: translateY(-2px); 
-            box-shadow: 0 6px 15px rgba(173, 181, 189, 0.5); 
-        }
+        .btn-undo { background: #ced4da; color: #495057; flex: 1; }
+        .btn-undo:hover { background: #adb5bd; }
+
+        .btn-reset { background: #f1f3f5; color: #adb5bd; flex: 1; border: 1px solid #dee2e6; }
+        .btn-reset:hover { background: #e9ecef; color: #868e96; }
 
         #message { 
             margin-top: 20px; font-weight: bold; font-size: 16px; 
@@ -93,7 +90,7 @@
     <h2>✨ Equation Explorer</h2>
     
     <div class="instructions">
-        Type an equation below to start. We'll check your work step-by-step!
+        Type an equation below to start (e.g., 2x + 5 = 11).
     </div>
 
     <div class="setup-area" id="setupArea">
@@ -106,8 +103,9 @@
     <div class="input-area" id="inputArea">
         <math-field id="stepInput" onkeydown="handleEnter(event)"></math-field>
         <div class="btn-container">
-            <button class="btn btn-step" onclick="submitStep()">Check My Step</button>
+            <button class="btn btn-step" onclick="submitStep()">Check</button>
             <button class="btn btn-undo" onclick="undoStep()">Undo</button>
+            <button class="btn btn-reset" onclick="resetProblem()">Reset</button>
         </div>
     </div>
 
@@ -123,18 +121,14 @@
 
     function latexToMath(latex) {
         let str = latex.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
-        
-        // UPGRADE 1: Properly convert multiplication dots and crosses to asterisks
         str = str.replace(/\\cdot/g, '*').replace(/\\times/g, '*'); 
         str = str.replace(/\\div/g, '/');
+        str = str.replace(/([\d.])x/g, '$1*x');
         str = str.replace(/\s+/g, '');
-        
         str = str.replace(/\\(d|t)?frac{([^{}]+)}{([^{}]+)}/g, function(match, prefix, num, den) {
             if (!/[+\-]/.test(num) && !/[+\-]/.test(den)) return num + '/' + den;
             return '(' + num + ')/(' + den + ')';
         });
-        str = str.replace(/\\(d|t)?frac(\d)(\d)/g, '$2/$3');
-        str = str.replace(/[{}]/g, ''); 
         return str.toLowerCase();
     }
 
@@ -148,21 +142,41 @@
         steps = [{ latex: rawLatex, ascii: asciiEq }]; 
         initialRoot = rootInfo.val; isSolved = false;
         
-        document.body.classList.remove('victory-mode');
         document.getElementById('inputArea').style.display = 'flex';
         document.getElementById('setupArea').style.display = 'none';
         document.getElementById('stepInput').value = '';
         showMessage("Awesome! What's your first step?", "success");
         renderSteps();
-        document.getElementById('stepInput').focus();
+        
+        setTimeout(() => document.getElementById('stepInput').focus(), 50);
+    }
+
+    // NEW FUNCTION: Reset everything to the start screen
+    function resetProblem() {
+        steps = [];
+        initialRoot = null;
+        isSolved = false;
+        
+        document.body.classList.remove('victory-mode');
+        document.getElementById('setupArea').style.display = 'block';
+        document.getElementById('inputArea').style.display = 'none';
+        document.getElementById('setupInput').value = '';
+        document.getElementById('stepList').innerHTML = '';
+        
+        const resetBtn = document.getElementById('finalResetBtn');
+        if (resetBtn) resetBtn.remove();
+        
+        const msgEl = document.getElementById('message');
+        msgEl.innerText = '';
+        msgEl.style.backgroundColor = 'transparent';
+        
+        setTimeout(() => document.getElementById('setupInput').focus(), 50);
     }
 
     function submitStep() {
         if (isSolved) return;
-        
         const rawLatex = document.getElementById('stepInput').value;
         const asciiInput = latexToMath(rawLatex);
-
         if (asciiInput === "") return;
         
         const lastStepAscii = steps[steps.length - 1].ascii;
@@ -172,88 +186,69 @@
         }
 
         const newRootInfo = calculateRoot(asciiInput);
-
         if (newRootInfo.error) { 
-            showMessage("Hmm, check your formatting: " + newRootInfo.error, "error"); 
+            showMessage("Check your formatting: " + newRootInfo.error, "error"); 
             return; 
         }
 
         if (Math.abs(newRootInfo.val - initialRoot) > 0.001) {
-            const hint = diagnoseError(lastStepAscii, asciiInput);
-            showMessage(hint, "error");
+            showMessage(diagnoseError(lastStepAscii, asciiInput), "error");
             return;
         }
 
         steps.push({ latex: rawLatex, ascii: asciiInput });
-        document.getElementById('stepInput').value = '';
-        showMessage("Great move! Keep going.", "success");
         renderSteps();
+        document.getElementById('stepInput').value = ""; 
+        document.getElementById('stepInput').focus();
+        showMessage("Great move! Keep going.", "success");
         checkWinCondition(asciiInput);
     }
 
     function undoStep() {
-        if (steps.length <= 1) {
-            showMessage("You're already at the very beginning!", "error");
-            return;
-        }
+        if (steps.length <= 1) { showMessage("You're already at the start!", "error"); return; }
         steps.pop();
         isSolved = false;
         document.body.classList.remove('victory-mode');
         document.getElementById('inputArea').style.display = 'flex';
-        
-        const resetBtn = document.getElementById('resetBtn');
+        const resetBtn = document.getElementById('finalResetBtn');
         if (resetBtn) resetBtn.remove();
-        
-        document.getElementById('stepInput').value = '';
         renderSteps();
-        showMessage("Step undone. Let's try that again!", "success");
-        document.getElementById('stepInput').focus();
+        showMessage("Step undone.", "success");
     }
 
     function diagnoseError(oldEq, newEq) {
+        if (!newEq.includes('=')) return "Wait! Every step needs an '=' sign.";
         const oldSides = oldEq.split('=');
         const newSides = newEq.split('=');
         const oldL = parseSide(oldSides[0]); const oldR = parseSide(oldSides[1]);
         const newL = parseSide(newSides[0]); const newR = parseSide(newSides[1]);
-
-        if(oldL.error || oldR.error || newL.error || newR.error) return "Wait! That's an illegal math move.";
-
+        if(oldL.error || oldR.error || newL.error || newR.error) return "Illegal math move!";
+        
         const leftChanged = (Math.abs(oldL.x - newL.x) > 0.001 || Math.abs(oldL.c - newL.c) > 0.001);
         const rightChanged = (Math.abs(oldR.x - newR.x) > 0.001 || Math.abs(oldR.c - newR.c) > 0.001);
 
-        if (leftChanged && !rightChanged) return "Hint: The right side stayed the same, but the left side changed. Check your math on the left!";
-        if (!leftChanged && rightChanged) return "Hint: The left side stayed the same, but the right side changed. Double-check the right side!";
-
-        const deltaLeftC = newL.c - oldL.c; const deltaRightC = newR.c - oldR.c;
-        const deltaLeftX = newL.x - oldL.x; const deltaRightX = newR.x - oldR.x;
-
-        if (Math.abs(deltaLeftC + deltaRightC) < 0.001 && Math.abs(deltaLeftC) > 0) return "Hint: Looks like you added a number to one side, but subtracted it from the other. Keep it balanced!";
-        if (Math.abs(deltaLeftX + deltaRightX) < 0.001 && Math.abs(deltaLeftX) > 0) return "Hint: You added x-terms to one side but subtracted them from the other.";
-
-        if (Math.abs(deltaLeftC - deltaRightC) > 0.001 && Math.abs(deltaLeftX - deltaRightX) < 0.001) return "Hint: You changed the constant numbers differently on each side. Remember the golden rule of algebra!";
-        if (Math.abs(deltaLeftX - deltaRightX) > 0.001 && Math.abs(deltaLeftC - deltaRightC) < 0.001) return "Hint: You changed the x-terms differently on each side. Keep it balanced!";
-
-        return "Hint: That move threw the equation off balance. Check your arithmetic carefully!";
+        if (leftChanged && !rightChanged) return "Hint: You changed the left side but the right side stayed the same.";
+        if (!leftChanged && rightChanged) return "Hint: You changed the right side but the left side stayed the same.";
+        return "Hint: That move threw the equation off balance!";
     }
 
     function checkWinCondition(eqStr) {
         const sides = eqStr.split('=');
-        const s1 = sides[0]; const s2 = sides[1];
-        const isLeftX = (s1 === 'x' || s1 === '1x' || s1 === '+x');
-        const isRightX = (s2 === 'x' || s2 === '1x' || s2 === '+x');
+        const isLeftX = (sides[0] === 'x' || sides[0] === '1x' || sides[0] === '+x');
+        const isRightX = (sides[1] === 'x' || sides[1] === '1x' || sides[1] === '+x');
         
         if (isLeftX || isRightX) {
             isSolved = true;
             document.body.classList.add('victory-mode');
             document.getElementById('inputArea').style.display = 'none';
-            showMessage("🎉 You isolated x! You solved it! 🎉", "victory-text");
+            showMessage("🎉 You solved it! 🎉", "victory-text");
             
             const resetBtn = document.createElement('button');
-            resetBtn.id = 'resetBtn';
+            resetBtn.id = 'finalResetBtn';
             resetBtn.className = 'btn btn-start';
             resetBtn.innerText = 'Solve Another';
             resetBtn.style.marginTop = '15px';
-            resetBtn.onclick = () => location.reload();
+            resetBtn.onclick = resetProblem; // Calls the internal reset function
             document.getElementById('mainContainer').appendChild(resetBtn);
         }
     }
@@ -264,66 +259,37 @@
         steps.forEach((stepObj, index) => {
             const li = document.createElement('li');
             li.className = 'step-item';
-            
             const num = document.createElement('span');
             num.className = 'step-number';
             num.innerText = (index + 1);
-            
             const mf = document.createElement('math-field');
             mf.value = stepObj.latex;
             mf.readOnly = true;
-
             li.appendChild(num); li.appendChild(mf); list.appendChild(li);
         });
     }
 
     function calculateRoot(eqStr) {
-        if (!eqStr.includes('=')) return { error: "Missing an '=' sign." };
+        if (!eqStr.includes('=')) return { error: "Missing '='" };
         const sides = eqStr.split('=');
-        if (sides.length !== 2 || sides[0] === '' || sides[1] === '') return { error: "Both sides must have values." };
-
         const leftParsed = parseSide(sides[0]);
         const rightParsed = parseSide(sides[1]);
-
-        if (leftParsed.error) return leftParsed;
-        if (rightParsed.error) return rightParsed;
-
+        if (leftParsed.error || rightParsed.error) return { error: "Invalid math" };
         const totalX = leftParsed.x - rightParsed.x;
         const totalC = rightParsed.c - leftParsed.c;
-
-        if (totalX === 0) {
-            if (totalC === 0) return { error: "Infinite solutions (0 = 0)." };
-            else return { error: "No solution (0x = non-zero)." };
-        }
+        if (totalX === 0) return { error: "No unique solution" };
         return { val: totalC / totalX };
     }
 
-    // UPGRADE 2: Taught the parser how to evaluate arithmetic inside terms
     function parseTerm(t) {
         let isVar = false;
-        if (t.includes('x')) { 
-            isVar = true; 
-            t = t.replace('x', ''); 
-        }
-        
+        if (t.includes('x')) { isVar = true; t = t.replace('x', ''); }
         if (t === '+' || t === '') return { val: 1, isVar: isVar };
         if (t === '-') return { val: -1, isVar: isVar };
-        
-        // Clean up hanging operators left over from removing 'x'
-        t = t.replace(/^[-+]\*/, (m) => m[0]); // Changes "-*" to "-"
-        t = t.replace(/\*\*/g, '*');           // Changes "**" to "*"
-        t = t.replace(/\*$/, '');              // Removes "*" at the very end
-        
-        // Handle standalone division (e.g., "x/2" becomes "1/2")
+        t = t.replace(/^[-+]\*/, (m) => m[0]).replace(/\*\*/g, '*').replace(/\*$/, '');
         if (t.startsWith('/')) t = '1' + t;
         if (t.startsWith('-/') || t.startsWith('+/')) t = t[0] + '1' + t.substring(1);
-        
-        try {
-            if (!/^[-+*/.0-9]+$/.test(t)) return { val: NaN, isVar: isVar };
-            return { val: new Function('return ' + t)(), isVar: isVar };
-        } catch(e) { 
-            return { val: NaN, isVar: isVar }; 
-        }
+        try { return { val: new Function('return ' + t)(), isVar: isVar }; } catch(e) { return { val: NaN, isVar: isVar }; }
     }
 
     function parseSide(sideStr) {
@@ -331,16 +297,13 @@
             let expanded = expandAll(sideStr);
             if (expanded[0] !== '+' && expanded[0] !== '-') expanded = '+' + expanded;
             const terms = expanded.match(/[+-][^+-]+/g);
-            if (!terms) return { error: "Could not read terms." };
-
             let xCoef = 0; let cVal = 0;
             for (let t of terms) {
                 let pt = parseTerm(t);
-                if (isNaN(pt.val)) return { error: "Invalid number found." };
                 if (pt.isVar) xCoef += pt.val; else cVal += pt.val;
             }
             return { x: xCoef, c: cVal };
-        } catch (e) { return { error: "Invalid math format." }; }
+        } catch (e) { return { error: "Parse error" }; }
     }
 
     function expandAll(text) {
@@ -351,33 +314,25 @@
                 try { return new Function('return ' + expr)(); } catch { return m; }
             });
         } while (text !== prev);
-
         do {
             prev = text;
             text = text.replace(/([+-]?)\(([^()]+)\)\/\(?([+-]?\d*\.?\d*)\)?/g, (m, sign, inner, den) => {
                 return (sign || '+') + "1/" + den + "(" + inner + ")";
             });
-
             text = text.replace(/([+-]?\d*\.?\d*(?:\/\d+\.?\d*)?)\(([^()]+)\)/g, (match, multStr, innerStr) => {
                 let mult = 1;
                 if (multStr === '-') mult = -1;
-                else if (multStr === '+' || multStr === '') mult = 1;
                 else if (multStr.includes('/')) {
                     let parts = multStr.split('/');
-                    let sign = multStr.startsWith('-') ? -1 : 1;
-                    let numStr = parts[0].replace('+','').replace('-','');
-                    let num = numStr === '' ? 1 : parseFloat(numStr);
-                    mult = sign * (num / parseFloat(parts[1]));
-                } else mult = parseFloat(multStr);
-
+                    mult = (parseFloat(parts[0]) || (multStr.startsWith('-') ? -1 : 1)) / parseFloat(parts[1]);
+                } else mult = parseFloat(multStr) || 1;
                 let cleanInner = innerStr;
                 if (cleanInner[0] !== '+' && cleanInner[0] !== '-') cleanInner = '+' + cleanInner;
                 const innerTerms = cleanInner.match(/[+-][^+-]+/g);
-                if (!innerTerms) return "";
-
                 let expandedStr = "";
                 for (let t of innerTerms) {
-                    let pt = parseTerm(t); let coef = pt.val * mult;
+                    let pt = parseTerm(t); 
+                    let coef = pt.val * mult;
                     expandedStr += (coef >= 0 ? '+' : '') + coef + (pt.isVar ? 'x' : '');
                 }
                 return expandedStr;
@@ -389,14 +344,17 @@
     function showMessage(msg, type) {
         const msgEl = document.getElementById('message');
         msgEl.innerText = msg;
-        if (type === 'error') {
-            msgEl.style.backgroundColor = '#ffe3e3'; msgEl.style.color = '#c92a2a';
-        } else if (type === 'success') {
-            msgEl.style.backgroundColor = '#e3fafc'; msgEl.style.color = '#0b7285';
-        } else {
-            msgEl.className = type; 
-        }
+        if (type === 'error') { msgEl.style.backgroundColor = '#ffe3e3'; msgEl.style.color = '#c92a2a'; } 
+        else if (type === 'success') { msgEl.style.backgroundColor = '#e3fafc'; msgEl.style.color = '#0b7285'; }
+        else { msgEl.className = type; }
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        ['setupInput', 'stepInput'].forEach(id => {
+            const mf = document.getElementById(id);
+            if (mf) { mf.mathModeSpace = "\\,"; mf.smartFence = true; }
+        });
+    });
 </script>
 
 </body>
