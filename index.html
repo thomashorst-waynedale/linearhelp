@@ -119,6 +119,27 @@
 
     function handleEnter(e) { if (e.key === 'Enter') { e.preventDefault(); submitStep(); } }
 
+    // --- NEW: THE SANITIZER ---
+    function getSanitizationError(latex, ascii) {
+        // 1. Block Non-Linear Math (Exponents/Roots)
+        if (latex.includes('^') || latex.includes('sqrt')) {
+            return "Keep it linear! No exponents or square roots.";
+        }
+        // 2. Block Other Variables
+        const otherVars = ascii.match(/[a-wyz]/g);
+        if (otherVars) return "Only the variable 'x' is allowed.";
+        
+        // 3. Block x in Denominator (Non-linear)
+        if (ascii.includes('/x') || /\/.*x/.test(ascii)) {
+            return "x must be in the numerator (top), not the denominator.";
+        }
+        
+        // 4. Block Division by Zero
+        if (ascii.includes('/0')) return "Division by zero is undefined!";
+
+        return null; // No errors found
+    }
+
     function latexToMath(latex) {
         let str = latex.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
         str = str.replace(/\\cdot/g, '*').replace(/\\times/g, '*'); 
@@ -135,8 +156,11 @@
     function startNewProblem() {
         const rawLatex = document.getElementById('setupInput').value;
         const asciiEq = latexToMath(rawLatex);
-        const rootInfo = calculateRoot(asciiEq);
         
+        const sError = getSanitizationError(rawLatex, asciiEq);
+        if (sError) { showMessage(sError, "error"); return; }
+
+        const rootInfo = calculateRoot(asciiEq);
         if (rootInfo.error) { showMessage("Oops! " + rootInfo.error, "error"); return; }
 
         steps = [{ latex: rawLatex, ascii: asciiEq }]; 
@@ -144,33 +168,11 @@
         
         document.getElementById('inputArea').style.display = 'flex';
         document.getElementById('setupArea').style.display = 'none';
-        document.getElementById('stepInput').value = '';
-        showMessage("Awesome! What's your first step?", "success");
-        renderSteps();
-        
-        setTimeout(() => document.getElementById('stepInput').focus(), 50);
-    }
-
-    // NEW FUNCTION: Reset everything to the start screen
-    function resetProblem() {
-        steps = [];
-        initialRoot = null;
-        isSolved = false;
-        
-        document.body.classList.remove('victory-mode');
-        document.getElementById('setupArea').style.display = 'block';
-        document.getElementById('inputArea').style.display = 'none';
         document.getElementById('setupInput').value = '';
         document.getElementById('stepList').innerHTML = '';
-        
-        const resetBtn = document.getElementById('finalResetBtn');
-        if (resetBtn) resetBtn.remove();
-        
-        const msgEl = document.getElementById('message');
-        msgEl.innerText = '';
-        msgEl.style.backgroundColor = 'transparent';
-        
-        setTimeout(() => document.getElementById('setupInput').focus(), 50);
+        showMessage("Awesome! What's your first step?", "success");
+        renderSteps();
+        setTimeout(() => document.getElementById('stepInput').focus(), 50);
     }
 
     function submitStep() {
@@ -178,6 +180,10 @@
         const rawLatex = document.getElementById('stepInput').value;
         const asciiInput = latexToMath(rawLatex);
         if (asciiInput === "") return;
+
+        // Check for "breaks" before processing
+        const sError = getSanitizationError(rawLatex, asciiInput);
+        if (sError) { showMessage(sError, "error"); return; }
         
         const lastStepAscii = steps[steps.length - 1].ascii;
         if (rawLatex === steps[steps.length - 1].latex) { 
@@ -203,6 +209,8 @@
         showMessage("Great move! Keep going.", "success");
         checkWinCondition(asciiInput);
     }
+
+ 
 
     function undoStep() {
         if (steps.length <= 1) { showMessage("You're already at the start!", "error"); return; }
@@ -248,7 +256,7 @@
             resetBtn.className = 'btn btn-start';
             resetBtn.innerText = 'Solve Another';
             resetBtn.style.marginTop = '15px';
-            resetBtn.onclick = resetProblem; // Calls the internal reset function
+            resetBtn.onclick = resetProblem; 
             document.getElementById('mainContainer').appendChild(resetBtn);
         }
     }
